@@ -8,6 +8,7 @@ const port = process.env.PORT || 3000;
 
 // Middleware to parse JSON bodies
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Google Drive API setup using environment variables
 const SCOPES = ["https://www.googleapis.com/auth/drive.readonly"];
@@ -247,18 +248,28 @@ app.get("/search", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// Route to search files with specific filters
 app.post(
   "/search/advanced",
   async (req: Request, res: Response): Promise<void> => {
+    console.log("@@@ req", req.body);
     const {
-      name,
-      mimeType,
-      parentId,
-      fullText,
-      maxResults = 10,
-      trashed = false,
-    } = req.body as AdvancedSearchBody;
+      // name,
+      // mimeType,
+      // parentId,
+      // fullText,
+      // maxResults = 10,
+      // trashed = false,
+      // New fields for condo search
+      agentName,
+      condoName,
+      condoId,
+      sqft,
+    } = req.body as AdvancedSearchBody & {
+      agentName?: string;
+      condoName?: string;
+      condoId?: string;
+      sqft?: number;
+    };
 
     try {
       const driveOrAuth = await initializeDriveAPI();
@@ -275,27 +286,46 @@ app.post(
       // Build query string
       const query: string[] = [];
 
-      if (name) {
-        query.push(`name contains '${name}'`);
-      }
+      // Handle condo-specific search logic
+      if (condoName || condoId || sqft) {
+        // Search for files containing sqft value if provided
+        if (sqft) {
+          query.push(`fullText contains '${sqft}'`);
+        }
 
-      if (mimeType) {
-        query.push(`mimeType = '${mimeType}'`);
+        // Search within specific condo folder
+        if (condoId) {
+          query.push(`'${condoId}' in parents`);
+        } else if (condoName) {
+          // If only condoName is provided, we need to first find the folder
+          // For now, we'll search by name pattern that might contain the condo name
+          query.push(`name contains '${condoName}'`);
+        }
       }
+      // else {
+      //   // Original search logic for backward compatibility
+      //   if (name) {
+      //     query.push(`name contains '${name}'`);
+      //   }
 
-      if (parentId) {
-        query.push(`'${parentId}' in parents`);
-      }
+      //   if (mimeType) {
+      //     query.push(`mimeType = '${mimeType}'`);
+      //   }
 
-      if (fullText) {
-        query.push(`fullText contains '${fullText}'`);
-      }
+      //   if (parentId) {
+      //     query.push(`'${parentId}' in parents`);
+      //   }
 
-      query.push(`trashed = ${trashed}`);
+      //   if (fullText) {
+      //     query.push(`fullText contains '${fullText}'`);
+      //   }
+      // }
+
+      // query.push(`trashed = ${trashed}`);
 
       const queryString = query.join(" and ");
 
-      const files = await searchFiles(driveOrAuth, queryString, maxResults);
+      const files = await searchFiles(driveOrAuth, queryString);
 
       const formattedFiles: FileResult[] = files.map((file) => ({
         id: file.id || "",
@@ -312,6 +342,13 @@ app.post(
         query: queryString,
         results: formattedFiles.length,
         files: formattedFiles,
+        // Include search context in response
+        searchContext: {
+          agentName,
+          condoName,
+          condoId,
+          sqft,
+        },
       });
     } catch (error) {
       console.error("Advanced search error:", error);
@@ -360,31 +397,31 @@ app.get("/file/:fileId", async (req: Request, res: Response): Promise<void> => {
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
-  console.log(`
-Setup Instructions:
+  //   console.log(`
+  // Setup Instructions:
 
-METHOD 1 - Service Account (Recommended for production):
-1. Go to Google Cloud Console
-2. Create a Service Account
-3. Download the service account key JSON
-4. Add these to your .env file:
-   GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@project.iam.gserviceaccount.com
-   GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\nYOUR_PRIVATE_KEY\\n-----END PRIVATE KEY-----\\n"
+  // METHOD 1 - Service Account (Recommended for production):
+  // 1. Go to Google Cloud Console
+  // 2. Create a Service Account
+  // 3. Download the service account key JSON
+  // 4. Add these to your .env file:
+  //    GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@project.iam.gserviceaccount.com
+  //    GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\nYOUR_PRIVATE_KEY\\n-----END PRIVATE KEY-----\\n"
 
-METHOD 2 - OAuth2 (For personal use):
-1. Go to Google Cloud Console
-2. Create OAuth2 credentials
-3. Add these to your .env file:
-   GOOGLE_CLIENT_ID=your-client-id
-   GOOGLE_CLIENT_SECRET=your-client-secret
-   GOOGLE_REDIRECT_URI=http://localhost:3000/auth/callback
-4. Visit /auth to get tokens, then add:
-   GOOGLE_ACCESS_TOKEN=your-access-token
-   GOOGLE_REFRESH_TOKEN=your-refresh-token
+  // METHOD 2 - OAuth2 (For personal use):
+  // 1. Go to Google Cloud Console
+  // 2. Create OAuth2 credentials
+  // 3. Add these to your .env file:
+  //    GOOGLE_CLIENT_ID=your-client-id
+  //    GOOGLE_CLIENT_SECRET=your-client-secret
+  //    GOOGLE_REDIRECT_URI=http://localhost:3000/auth/callback
+  // 4. Visit /auth to get tokens, then add:
+  //    GOOGLE_ACCESS_TOKEN=your-access-token
+  //    GOOGLE_REFRESH_TOKEN=your-refresh-token
 
-Example searches:
-- GET /search?q=name contains 'test'
-- GET /search?q=mimeType = 'application/pdf'
-- POST /search/advanced with JSON body: {"name": "report", "mimeType": "application/pdf"}
-  `);
+  // Example searches:
+  // - GET /search?q=name contains 'test'
+  // - GET /search?q=mimeType = 'application/pdf'
+  // - POST /search/advanced with JSON body: {"name": "report", "mimeType": "application/pdf"}
+  //   `);
 });
