@@ -251,7 +251,6 @@ app.get("/search", async (req: Request, res: Response): Promise<void> => {
 app.post(
   "/search/advanced",
   async (req: Request, res: Response): Promise<void> => {
-    console.log("@@@ req", req.body);
     const {
       // name,
       // mimeType,
