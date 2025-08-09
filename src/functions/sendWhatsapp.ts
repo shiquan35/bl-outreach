@@ -1,7 +1,10 @@
-import axios from "axios";
+import twilio from "twilio";
 
-const WHATSAPP_API_URL = `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN!;
+const accountSid = process.env.TWILIO_ACCOUNT_SID!;
+const authToken = process.env.TWILIO_AUTH_TOKEN!;
+const fromNumber = process.env.TWILIO_WHATSAPP_FROM_NUMBER!;
+
+const client = twilio(accountSid, authToken);
 
 export const sendWhatsapp = async ({
   phoneNumber,
@@ -12,44 +15,35 @@ export const sendWhatsapp = async ({
   message: string;
   mediaURLs: string[];
 }) => {
-  // Send text message
   try {
-    await axios.post(
-      WHATSAPP_API_URL,
-      {
-        messaging_product: "whatsapp",
-        to: phoneNumber,
-        type: "text",
-        text: { body: message },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${ACCESS_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    // Format phone number for Twilio WhatsApp (add whatsapp: prefix)
+    const formattedPhoneNumber = phoneNumber.startsWith("whatsapp:")
+      ? phoneNumber
+      : `whatsapp:${phoneNumber}`;
 
-    // Send each media URL as a separate image message
-    // for (const url of mediaURLs) {
-    //   await axios.post(
-    //     WHATSAPP_API_URL,
-    //     {
-    //       messaging_product: "whatsapp",
-    //       to: phoneNumber,
-    //       type: "image",
-    //       image: { link: url },
-    //     },
-    //     {
-    //       headers: {
-    //         Authorization: `Bearer ${ACCESS_TOKEN}`,
-    //         "Content-Type": "application/json",
-    //       },
-    //     }
-    //   );
-    // }
+    // Ensure from number has whatsapp: prefix
+    const formattedFromNumber = fromNumber.startsWith("whatsapp:")
+      ? fromNumber
+      : `whatsapp:${fromNumber}`;
+
+    // Send text message
+    await client.messages.create({
+      body: message,
+      from: formattedFromNumber,
+      to: formattedPhoneNumber,
+    });
+
+    // Send each media URL as a separate message
+    for (const url of mediaURLs) {
+      await client.messages.create({
+        body: "", // Optional: you can add a caption here
+        mediaUrl: [url],
+        from: formattedFromNumber,
+        to: formattedPhoneNumber,
+      });
+    }
   } catch (error) {
-    // console.error("Error sending WhatsApp message:", error);
-    throw new Error("Failed to send WhatsApp message");
+    console.error("Error sending WhatsApp message via Twilio:", error);
+    throw new Error("Failed to send WhatsApp message via Twilio");
   }
 };
